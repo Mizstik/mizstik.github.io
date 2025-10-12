@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Goddess of Victory Nikke Champion Arena Crop Tool</title>
+<title>Goddess of Victory Champion Arena Crop Tool</title>
 <style>
   body{font-family:sans-serif;margin:2rem;}
   #preview{margin-top:1rem;border:1px solid #ccc;padding:.5rem;display:inline-block;}
@@ -13,10 +13,10 @@
 </head>
 
 <body>
-<h1>Goddess of Victory Nikke Champion Arena Crop Tool</h1>
+<h1>Goddess of Victory Champion Arena Crop Tool</h1>
 
-<p>Take 10 screenshots of the teams. Select the files, then specify the size of the center team box in pixels. The tool will crop the center of the image with the specified box size and make a 5x2 collage.</p>
-<p>All processing is done on your browser. No upload is performed.</p>
+<p>Take 10 screenshots of the teams. Select the files, then either let the tool find the bright area automatically or specify a fixed crop size. The resulting images will be stitched into a 5 × 2 collage.</p>
+<p>All processing is done in your browser – no uploads are made.</p>
 
 <form id="form">
   <label>
@@ -24,6 +24,13 @@
     <input type="file" id="files" accept="image/*" multiple required>
   </label><br><br>
 
+  <!-- Auto‑detect toggle -->
+  <label>
+    <input type="checkbox" id="autoDetect" checked>
+    Use automatic cropping (recommended)
+  </label><br><br>
+
+  <!-- Manual crop controls – disabled when auto‑detect is on -->
   <label>
     Crop width (px):
     <input type="number" id="cropW" value="1030" min="1" required>
@@ -52,16 +59,18 @@
 
 <script>
 (() => {
-  const form = document.getElementById('form');
-  const fileInput = document.getElementById('files');
-  const cropWInput = document.getElementById('cropW');
-  const cropHInput = document.getElementById('cropH');
-  const offsetYInput = document.getElementById('offsetY');
-  const reverseChk = document.getElementById('reverseSort');
-  const msgEl = document.getElementById('msg');
-  const previewDiv = document.getElementById('preview');
+  const form        = document.getElementById('form');
+  const fileInput   = document.getElementById('files');
+  const cropWInput  = document.getElementById('cropW');
+  const cropHInput  = document.getElementById('cropH');
+  const offsetYInput= document.getElementById('offsetY');
+  const reverseChk  = document.getElementById('reverseSort');
+  const autoChk     = document.getElementById('autoDetect');
+  const msgEl       = document.getElementById('msg');
+  const previewDiv  = document.getElementById('preview');
 
-  // Load an image from a File object
+  /* ------------------------------------------------------------- */
+  /* Utility – load an image from a File object                   */
   function loadImg(file) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
@@ -72,57 +81,126 @@
     });
   }
 
-  // Crop the centre of an image to (w,h) with optional vertical offset
-  function cropCenter(img, w, h, offsetY = 0) {
+  /* ------------------------------------------------------------- */
+  /* Crop a rectangle from an image                               */
+  function cropCenter(img, w, h, offsetY = 0, srcX = 0, srcY = 0) {
     const srcW = img.naturalWidth;
     const srcH = img.naturalHeight;
 
-    const cw = Math.min(w, srcW);
-    const ch = Math.min(h, srcH);
+    // When we have a source rectangle (auto‑detect), use it; otherwise default to centre
+    let left = srcX;
+    let top  = srcY + offsetY;
 
-    let left = Math.floor((srcW - cw) / 2);
-    let top  = Math.floor((srcH - ch) / 2) + offsetY;
-
-    // Clamp to image bounds
-    if (top < 0) top = 0;
-    if (top > srcH - ch) top = Math.max(0, srcH - ch);
+    if (srcX === 0 && srcY === 0) {        // manual mode → centre crop
+      left = Math.floor((srcW - w) / 2);
+      top  = Math.floor((srcH - h) / 2) + offsetY;
+    }
 
     const canvas = document.createElement('canvas');
-    canvas.width = cw;
-    canvas.height = ch;
+    canvas.width  = w;
+    canvas.height = h;
     const ctx = canvas.getContext('2d');
 
-    ctx.drawImage(img, left, top, cw, ch, 0, 0, cw, ch);
+    ctx.drawImage(img, left, top, w, h, 0, 0, w, h);
     return canvas;
   }
 
-  // Compose canvases into a 2×5 collage
-  function makeCollage(canvases, w, h) {
-    const rows = 2, cols = 5;
-    const outW = w * cols;
-    const outH = h * rows;
+  /* ------------------------------------------------------------- */
+  /* Detect the largest bright region in an image                  */
+  function detectCropArea(img) {
+    const tmp = document.createElement('canvas');
+    tmp.width  = img.naturalWidth;
+    tmp.height = img.naturalHeight;
+    const ctx = tmp.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+
+    const {data} = ctx.getImageData(0, 0, tmp.width, tmp.height);
+    const lum   = new Uint8Array(tmp.width * tmp.height);
+
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const y = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      lum[i / 4] = y;
+      sum += y;
+    }
+
+    const mean   = sum / lum.length;
+    let sqSum = 0;
+    for (const v of lum) sqSum += v * v;
+    const stdDev = Math.sqrt(sqSum / lum.length - mean * mean);
+    const thresh = mean + 0.5 * stdDev;   // tweak if needed
+
+    let minX = tmp.width, maxX = 0;
+    let minY = tmp.height, maxY = 0;
+    for (let y = 0; y < tmp.height; ++y) {
+      for (let x = 0; x < tmp.width; ++x) {
+        if (lum[y * tmp.width + x] > thresh) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    // If no bright pixels found, return the whole image
+    if (minX === tmp.width) {
+      return {x:0, y:0, w:tmp.width, h:tmp.height};
+    }
+
+    return {x:minX, y:minY, w:maxX - minX + 1, h:maxY - minY + 1};
+  }
+
+  /* ------------------------------------------------------------- */
+  /* Build a 2×5 collage from an array of canvases                 */
+  function makeCollage(canvases) {
+    const rows = 2;
+    const cols = 5;
+
+    // All cropped images are (almost) the same size – use the first as reference
+    const cellW = canvases[0].width;
+    const cellH = canvases[0].height;
+
+    const outW = cellW * cols;
+    const outH = cellH * rows;
 
     const outCanvas = document.createElement('canvas');
-    outCanvas.width = outW;
+    outCanvas.width  = outW;
     outCanvas.height = outH;
     const ctx = outCanvas.getContext('2d');
 
     canvases.forEach((c, idx) => {
-      const r = Math.floor(idx / cols);
-      const cIdx = idx % cols;
-      const x = cIdx * w;
-      const y = r * h;
+      const r   = Math.floor(idx / cols);
+      const col = idx % cols;
+      const x   = col * cellW;
+      const y   = r   * cellH;
 
-      // If the cropped canvas is smaller than target (source was too small),
-      // centre it inside its slot
-      const dx = (w - c.width)  / 2;
-      const dy = (h - c.height) / 2;
+      // Center the cropped image inside its slot
+      const dx = (cellW - c.width)  / 2;
+      const dy = (cellH - c.height) / 2;
       ctx.drawImage(c, x + dx, y + dy);
     });
 
     return outCanvas;
   }
 
+  /* ------------------------------------------------------------- */
+  /* Enable/disable manual‑crop fields based on auto‑detect toggle  */
+  function toggleManualFields() {
+    const disabled = autoChk.checked;
+    cropWInput.disabled   = disabled;
+    cropHInput.disabled   = disabled;
+    offsetYInput.disabled = disabled;
+  }
+  autoChk.addEventListener('change', toggleManualFields);
+  // initialise state
+  toggleManualFields();
+
+  /* ------------------------------------------------------------- */
+  /* Form submit – orchestrate the whole workflow                  */
   form.addEventListener('submit', async e => {
     e.preventDefault();
     msgEl.textContent = '';
@@ -159,13 +237,20 @@
       // Get images in the sorted order
       const sortedImgs = sortedFiles.map(f => fileToImg.get(f));
 
-      // Crop each image
-      const croppedCanvases = sortedImgs.map(img =>
-        cropCenter(img, cw, ch, offsetY)
-      );
+      const useAutoDetect = autoChk.checked;
 
-      // Make collage
-      const collageCanvas = makeCollage(croppedCanvases, cw, ch);
+      const croppedCanvases = sortedImgs.map(img => {
+        if (useAutoDetect) {
+          const rect = detectCropArea(img);          // {x,y,w,h}
+          console.log('auto‑detect crop:', rect);
+          return cropCenter(img, rect.w, rect.h, 0, rect.x, rect.y);
+        } else {
+          return cropCenter(img, cw, ch, offsetY);
+        }
+      });
+
+      // Build collage
+      const collageCanvas = makeCollage(croppedCanvases);
 
       // Show preview & add download link
       const imgEl = new Image();
@@ -191,5 +276,3 @@
 </script>
 </body>
 </html>
-
-
