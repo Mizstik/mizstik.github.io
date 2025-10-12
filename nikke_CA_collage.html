@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Goddess of Victory Champion Arena Crop Tool</title>
+<style>
+  body{font-family:sans-serif;margin:2rem;}
+  #preview{margin-top:1rem;border:1px solid #ccc;padding:.5rem;display:inline-block;}
+  canvas{max-width:100%;height:auto;}
+  img{max-width:100%; height:auto;}
+  .error{color:#c00;}
+</style>
+</head>
+
+<body>
+<h1>Goddess of Victory Champion Arena Crop Tool</h1>
+
+<p>Take 10 screenshots of the teams. Select the files, then specify the size of the center team box in pixels. The tool will crop the center of the image with the specified box size and make a 5x2 collage.</p>
+
+<form id="form">
+  <label>
+    Images:
+    <input type="file" id="files" accept="image/*" multiple required>
+  </label><br><br>
+
+  <label>
+    Crop width (px):
+    <input type="number" id="cropW" value="1030" min="1" required>
+  </label>
+  <label style="margin-left:1rem;">
+    Crop height (px):
+    <input type="number" id="cropH" value="768" min="1" required>
+  </label><br><br>
+
+  <label>
+    Centre offset (px) – positive shifts the crop downward:
+    <input type="number" id="offsetY" value="60">
+  </label><br><br>
+
+  <label>
+    <input type="checkbox" id="reverseSort">
+    Reverse sort (newest first)
+  </label><br><br>
+
+  <button type="submit">Create Collage</button>
+</form>
+
+<div class="error" id="msg"></div>
+
+<div id="preview"></div>
+
+<script>
+(() => {
+  const form = document.getElementById('form');
+  const fileInput = document.getElementById('files');
+  const cropWInput = document.getElementById('cropW');
+  const cropHInput = document.getElementById('cropH');
+  const offsetYInput = document.getElementById('offsetY');
+  const reverseChk = document.getElementById('reverseSort');
+  const msgEl = document.getElementById('msg');
+  const previewDiv = document.getElementById('preview');
+
+  // Load an image from a File object
+  function loadImg(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = err => { URL.revokeObjectURL(url); reject(err); };
+      img.src = url;
+    });
+  }
+
+  // Crop the centre of an image to (w,h) with optional vertical offset
+  function cropCenter(img, w, h, offsetY = 0) {
+    const srcW = img.naturalWidth;
+    const srcH = img.naturalHeight;
+
+    const cw = Math.min(w, srcW);
+    const ch = Math.min(h, srcH);
+
+    let left = Math.floor((srcW - cw) / 2);
+    let top  = Math.floor((srcH - ch) / 2) + offsetY;
+
+    // Clamp to image bounds
+    if (top < 0) top = 0;
+    if (top > srcH - ch) top = Math.max(0, srcH - ch);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+
+    ctx.drawImage(img, left, top, cw, ch, 0, 0, cw, ch);
+    return canvas;
+  }
+
+  // Compose canvases into a 2×5 collage
+  function makeCollage(canvases, w, h) {
+    const rows = 2, cols = 5;
+    const outW = w * cols;
+    const outH = h * rows;
+
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = outW;
+    outCanvas.height = outH;
+    const ctx = outCanvas.getContext('2d');
+
+    canvases.forEach((c, idx) => {
+      const r = Math.floor(idx / cols);
+      const cIdx = idx % cols;
+      const x = cIdx * w;
+      const y = r * h;
+
+      // If the cropped canvas is smaller than target (source was too small),
+      // centre it inside its slot
+      const dx = (w - c.width)  / 2;
+      const dy = (h - c.height) / 2;
+      ctx.drawImage(c, x + dx, y + dy);
+    });
+
+    return outCanvas;
+  }
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    msgEl.textContent = '';
+    previewDiv.innerHTML = '';
+
+    const files = Array.from(fileInput.files);
+    if (files.length !== 10) {
+      msgEl.textContent = '❌ Please select exactly ten images.';
+      return;
+    }
+
+    let cw = parseInt(cropWInput.value, 10);
+    let ch = parseInt(cropHInput.value, 10);
+    const offsetY = parseInt(offsetYInput.value, 10) || 0;
+
+    if (isNaN(cw) || isNaN(ch) || cw <= 0 || ch <= 0) {
+      msgEl.textContent = '❌ Invalid crop dimensions.';
+      return;
+    }
+
+    try {
+      // Load all images
+      const imgs = await Promise.all(files.map(f => loadImg(f)));
+
+      // Map File → Image (original order)
+      const fileToImg = new Map();
+      files.forEach((f, i) => fileToImg.set(f, imgs[i]));
+
+      // Sort files by lastModified – ascending or descending
+      const sortedFiles = [...files].sort((a, b) =>
+        reverseChk.checked ? b.lastModified - a.lastModified
+                           : a.lastModified - b.lastModified);
+
+      // Get images in the sorted order
+      const sortedImgs = sortedFiles.map(f => fileToImg.get(f));
+
+      // Crop each image
+      const croppedCanvases = sortedImgs.map(img =>
+        cropCenter(img, cw, ch, offsetY)
+      );
+
+      // Make collage
+      const collageCanvas = makeCollage(croppedCanvases, cw, ch);
+
+      // Show preview & add download link
+      const imgEl = new Image();
+      imgEl.src = collageCanvas.toDataURL('image/png');
+      imgEl.alt = '10‑Image Collage';
+      imgEl.title = 'Click to download';
+
+      imgEl.style.cursor = 'pointer';
+      imgEl.onclick = () => {
+        const link = document.createElement('a');
+        link.href = imgEl.src;
+        link.download = 'collage.png';
+        link.click();
+      };
+
+      previewDiv.appendChild(imgEl);
+    } catch (err) {
+      console.error(err);
+      msgEl.textContent = '❌ Something went wrong.';
+    }
+  });
+})();
+</script>
+</body>
+</html>
