@@ -52,6 +52,8 @@
 
   <button type="submit">Create Collage</button>
 </form>
+<div id="processingIndicator" style="margin-top: 1rem; display: none;">Processing...</div>
+<p><a href="" download="nikke_ca_collage.jpg" id="downloadButton" style="display:none;">Download Image</a></p>
 
 <div class="error" id="msg"></div>
 
@@ -201,7 +203,10 @@
 
   /* ------------------------------------------------------------- */
   /* Form submit – orchestrate the whole workflow                  */
-  form.addEventListener('submit', async e => {
+form.addEventListener('submit', async e => {
+  // Show processing indicator
+  const processingIndicator = document.getElementById('processingIndicator');
+  processingIndicator.style.display = 'block';
     e.preventDefault();
     msgEl.textContent = '';
     previewDiv.innerHTML = '';
@@ -266,11 +271,25 @@
         link.click();
       };
 
-      previewDiv.appendChild(imgEl);
-    } catch (err) {
-      console.error(err);
-      msgEl.textContent = '❌ Something went wrong.';
-    }
+  // Add this line to update the href attribute of the download button
+  const downloadButton = document.getElementById('downloadButton');
+  downloadButton.href = collageCanvas.toDataURL('image/jpeg');
+
+  // Show the download button
+  downloadButton.style.display = 'inline-block';
+
+  previewDiv.appendChild(imgEl);
+  const processingIndicator = document.getElementById('processingIndicator');
+  processingIndicator.style.display = 'none';
+} catch (err) {
+  console.error(err);
+  msgEl.textContent = '❌ Something went wrong.';
+  // Hide processing indicator on error
+  const processingIndicator = document.getElementById('processingIndicator');
+  processingIndicator.style.display = 'none';
+  console.error(err);
+  msgEl.textContent = '❌ Something went wrong.';
+  }
   });
 })();
 </script>
