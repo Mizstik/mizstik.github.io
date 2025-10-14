@@ -15,7 +15,7 @@
 <body>
 <h1>Goddess of Victory Nikke Champion Arena Crop Tool</h1>
 
-<p>Take 10 screenshots of the teams. Select the files, then either let the tool auto-detect the team box, or manually specify the size of the team box in the middle. The resulting images will be stitched into a 5×2 collage.</p>
+<p>Take 10 screenshots of the teams. Select the files, then either let the tool auto-detect the team box, or manually specify the size of the team box in the middle. The resulting images will be stitched into a 5x2 collage.</p>
 <p>All processing is done in your browser. No uploads are made.</p>
 
 <form id="form">
@@ -24,13 +24,11 @@
     <input type="file" id="files" accept="image/*" multiple required>
   </label><br><br>
 
-  <!-- Auto‑detect toggle -->
   <label>
     <input type="checkbox" id="autoDetect" checked>
     Auto-detect cropping area
   </label><br><br>
 
-  <!-- Manual crop controls – disabled when auto‑detect is on -->
   <label>
     Crop width (px):
     <input type="number" id="cropW" value="1030" min="1" required>
@@ -41,13 +39,13 @@
   </label><br><br>
 
   <label>
-    Centre offset (px) – positive shifts the crop downward:
+    Center offset (px) - positive number shifts the crop downward:
     <input type="number" id="offsetY" value="60">
   </label><br><br>
 
   <label>
     <input type="checkbox" id="reverseSort">
-    Reverse sort (newest first)
+    Reverse sort order
   </label><br><br>
 
   <button type="submit">Create Collage</button>
@@ -71,8 +69,6 @@
   const msgEl       = document.getElementById('msg');
   const previewDiv  = document.getElementById('preview');
 
-  /* ------------------------------------------------------------- */
-  /* Utility – load an image from a File object                   */
   function loadImg(file) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
@@ -83,17 +79,15 @@
     });
   }
 
-  /* ------------------------------------------------------------- */
-  /* Crop a rectangle from an image                               */
   function cropCenter(img, w, h, offsetY = 0, srcX = 0, srcY = 0) {
     const srcW = img.naturalWidth;
     const srcH = img.naturalHeight;
 
-    // When we have a source rectangle (auto‑detect), use it; otherwise default to centre
     let left = srcX;
     let top  = srcY + offsetY;
 
-    if (srcX === 0 && srcY === 0) {        // manual mode → centre crop
+    // fallback when autodetect fails
+    if (srcX === 0 && srcY === 0) {
       left = Math.floor((srcW - w) / 2);
       top  = Math.floor((srcH - h) / 2) + offsetY;
     }
@@ -107,8 +101,7 @@
     return canvas;
   }
 
-  /* ------------------------------------------------------------- */
-  /* Detect the largest bright region in an image                  */
+  // Detect the largest bright region in an image
   function detectCropArea(img) {
     const tmp = document.createElement('canvas');
     tmp.width  = img.naturalWidth;
@@ -156,13 +149,11 @@
     return {x:minX, y:minY, w:maxX - minX + 1, h:maxY - minY + 1};
   }
 
-  /* ------------------------------------------------------------- */
-  /* Build a 2×5 collage from an array of canvases                 */
+  // Build a 2×5 collage from an array of canvases
   function makeCollage(canvases) {
     const rows = 2;
     const cols = 5;
 
-    // All cropped images are (almost) the same size – use the first as reference
     const cellW = canvases[0].width;
     const cellH = canvases[0].height;
 
@@ -189,8 +180,6 @@
     return outCanvas;
   }
 
-  /* ------------------------------------------------------------- */
-  /* Enable/disable manual‑crop fields based on auto‑detect toggle  */
   function toggleManualFields() {
     const disabled = autoChk.checked;
     cropWInput.disabled   = disabled;
@@ -201,12 +190,12 @@
   // initialise state
   toggleManualFields();
 
-  /* ------------------------------------------------------------- */
-  /* Form submit – orchestrate the whole workflow                  */
-form.addEventListener('submit', async e => {
-  // Show processing indicator
-  const processingIndicator = document.getElementById('processingIndicator');
-  processingIndicator.style.display = 'block';
+
+  // Form submit – start processing
+  form.addEventListener('submit', async e => {
+    // Show processing indicator
+    const processingIndicator = document.getElementById('processingIndicator');
+    processingIndicator.style.display = 'block';
     e.preventDefault();
     msgEl.textContent = '';
     previewDiv.innerHTML = '';
@@ -237,7 +226,7 @@ form.addEventListener('submit', async e => {
       // Sort files by lastModified – ascending or descending
       const sortedFiles = [...files].sort((a, b) =>
         reverseChk.checked ? b.lastModified - a.lastModified
-                           : a.lastModified - b.lastModified);
+                          : a.lastModified - b.lastModified);
 
       // Get images in the sorted order
       const sortedImgs = sortedFiles.map(f => fileToImg.get(f));
@@ -271,25 +260,25 @@ form.addEventListener('submit', async e => {
         link.click();
       };
 
-  // Add this line to update the href attribute of the download button
-  const downloadButton = document.getElementById('downloadButton');
-  downloadButton.href = collageCanvas.toDataURL('image/jpeg');
+      // Add this line to update the href attribute of the download button
+      const downloadButton = document.getElementById('downloadButton');
+      downloadButton.href = collageCanvas.toDataURL('image/jpeg');
 
-  // Show the download button
-  downloadButton.style.display = 'inline-block';
+      // Show the download button
+      downloadButton.style.display = 'inline-block';
 
-  previewDiv.appendChild(imgEl);
-  const processingIndicator = document.getElementById('processingIndicator');
-  processingIndicator.style.display = 'none';
-} catch (err) {
-  console.error(err);
-  msgEl.textContent = '❌ Something went wrong.';
-  // Hide processing indicator on error
-  const processingIndicator = document.getElementById('processingIndicator');
-  processingIndicator.style.display = 'none';
-  console.error(err);
-  msgEl.textContent = '❌ Something went wrong.';
-  }
+      previewDiv.appendChild(imgEl);
+      const processingIndicator = document.getElementById('processingIndicator');
+      processingIndicator.style.display = 'none';
+    } catch (err) {
+      console.error(err);
+      msgEl.textContent = '❌ Something went wrong.';
+      // Hide processing indicator on error
+      const processingIndicator = document.getElementById('processingIndicator');
+      processingIndicator.style.display = 'none';
+      console.error(err);
+      msgEl.textContent = '❌ Something went wrong.';
+    }
   });
 })();
 </script>
